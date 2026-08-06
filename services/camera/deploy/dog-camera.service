@@ -1,0 +1,15 @@
+[Unit]
+Description=Phij dog camera publisher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+EnvironmentFile=/etc/phij-camera.env
+ExecStart=/opt/phij-camera/.venv/bin/dog-camera
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

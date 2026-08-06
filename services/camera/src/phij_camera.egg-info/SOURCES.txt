@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+src/dog_camera/__init__.py
+src/dog_camera/__main__.py
+src/dog_camera/agent.py
+src/phij_camera.egg-info/PKG-INFO
+src/phij_camera.egg-info/SOURCES.txt
+src/phij_camera.egg-info/dependency_links.txt
+src/phij_camera.egg-info/entry_points.txt
+src/phij_camera.egg-info/requires.txt
+src/phij_camera.egg-info/top_level.txt
+tests/test_agent.py

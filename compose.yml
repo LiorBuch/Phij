@@ -1,0 +1,97 @@
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest-ffmpeg
+    restart: unless-stopped
+    volumes:
+      - ./infra/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - "8554:8554"
+      - "8889:8889"
+      - "8189:8189/udp"
+      - "9997:9997"
+      - "9998:9998"
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: ${MEDIA_HOST:-127.0.0.1}
+
+  server:
+    image: ${IMAGE_PREFIX:-ghcr.io/liorbuch/phij}-server:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    environment:
+      STREAM_NAME: dog-cam
+      WHEP_URL: ${NEXT_PUBLIC_WHEP_URL:-http://localhost:8889/dog-cam/whep}
+      CAMERA_STALE_AFTER_SECONDS: 15
+      CORS_ORIGIN: "*"
+    ports:
+      - "4000:4000"
+
+  web:
+    image: ${IMAGE_PREFIX:-ghcr.io/liorbuch/phij}-web:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on: [server, mediamtx]
+
+  camera:
+    image: ${IMAGE_PREFIX:-ghcr.io/liorbuch/phij}-camera:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: services/camera/Dockerfile
+    restart: unless-stopped
+    devices:
+      - ${CAMERA_DEVICE:-/dev/video0}:${CAMERA_DEVICE:-/dev/video0}
+    environment:
+      CAMERA_ID: dog-cam
+      CAMERA_DEVICE: ${CAMERA_DEVICE:-/dev/video0}
+      CAMERA_WIDTH: ${CAMERA_WIDTH:-1280}
+      CAMERA_HEIGHT: ${CAMERA_HEIGHT:-720}
+      CAMERA_FPS: ${CAMERA_FPS:-25}
+      CAMERA_BITRATE: ${CAMERA_BITRATE:-1800k}
+      CAMERA_INPUT_FORMAT: ${CAMERA_INPUT_FORMAT:-mjpeg}
+      MEDIA_MTX_RTSP_URL: rtsp://mediamtx:8554/dog-cam
+      API_URL: http://server:4000
+      HEARTBEAT_INTERVAL_SECONDS: 5
+    depends_on: [server, mediamtx]
+
+  test-stream:
+    image: linuxserver/ffmpeg:latest
+    profiles: ["test-stream"]
+    depends_on: [mediamtx]
+    command:
+      - -re
+      - -f
+      - lavfi
+      - -i
+      - testsrc2=size=1280x720:rate=25
+      - -c:v
+      - libx264
+      - -preset
+      - ultrafast
+      - -tune
+      - zerolatency
+      - -pix_fmt
+      - yuv420p
+      - -f
+      - rtsp
+      - -rtsp_transport
+      - tcp
+      - rtsp://mediamtx:8554/dog-cam
+
+  test-heartbeat:
+    image: curlimages/curl:latest
+    profiles: ["test-stream"]
+    depends_on: [server]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          curl -fsS -X POST http://server:4000/api/cameras/heartbeat \
+            -H 'Content-Type: application/json' \
+            -d '{"cameraId":"dog-cam","state":"streaming","message":"Synthetic test stream"}' || true
+          sleep 5
+        done

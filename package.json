@@ -1,0 +1,21 @@
+{
+  "name": "phij-dog-camera",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.20.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @phij/web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint && python -m ruff check apps/server services/camera",
+    "typecheck": "pnpm -r typecheck && python -m mypy apps/server/app services/camera/src",
+    "test": "pnpm -r test && python -m pytest apps/server/tests services/camera/tests",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "server:dev": "python -m uvicorn app.main:app --app-dir apps/server --reload --host 0.0.0.0 --port 4000",
+    "camera:dev": "python -m dog_camera",
+    "stream:test": "docker compose --profile test-stream up test-stream",
+    "compose:up": "docker compose up --build"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

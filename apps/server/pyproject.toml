@@ -1,0 +1,27 @@
+[project]
+name = "phij-server"
+version = "0.1.0"
+requires-python = ">=3.9"
+dependencies = [
+  "fastapi>=0.116",
+  "pydantic-settings>=2.10",
+  "uvicorn[standard]>=0.35",
+]
+
+[project.optional-dependencies]
+dev = ["httpx>=0.28", "mypy>=1.17", "pytest>=8.4", "ruff>=0.12"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+ignore = ["UP045"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+plugins = ["pydantic.mypy"]

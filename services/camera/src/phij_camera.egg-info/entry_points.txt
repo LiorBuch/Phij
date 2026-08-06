@@ -1,0 +1,2 @@
+[console_scripts]
+dog-camera = dog_camera.__main__:main
