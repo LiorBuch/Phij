@@ -6,13 +6,19 @@ runs this agent as the `camera` service in the root Compose stack.
 1. Confirm the device:
    ```sh
    sudo apt update
-   sudo apt install -y v4l-utils
+   sudo apt install -y v4l-utils alsa-utils
    v4l2-ctl --list-devices
    v4l2-ctl --device /dev/video0 --list-formats-ext
+   arecord -l
    ```
 2. Set `CAMERA_DEVICE` and supported capture settings in the root `.env`, then
-   run `bash deploy.sh`. Compose maps the selected device into the versioned
-   camera container.
+   set `CAMERA_AUDIO_DEVICE` to the webcam microphone reported by `arecord`
+   (for example `plughw:1,0`). Run `bash deploy.sh`. Compose maps `/dev/video0`
+   and `/dev/snd` into the versioned camera container.
+
+Audio is encoded as mono Opus for WebRTC compatibility. The web viewer starts
+muted to satisfy browser autoplay rules; select **Enable sound** after the
+stream connects. Set `CAMERA_AUDIO_DEVICE=` to disable microphone capture.
 
 For a non-container systemd installation, copy this directory to
 `/opt/phij-camera`, then install it:

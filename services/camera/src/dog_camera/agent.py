@@ -19,6 +19,8 @@ class Config:
     fps: int = 25
     bitrate: str = "1800k"
     input_format: str = "mjpeg"
+    audio_device: str | None = None
+    audio_bitrate: str = "64k"
     rtsp_url: str = "rtsp://localhost:8554/dog-cam"
     api_url: str = "http://localhost:4000"
     heartbeat_interval: float = 5
@@ -33,6 +35,8 @@ class Config:
             fps=int(os.getenv("CAMERA_FPS", "25")),
             bitrate=os.getenv("CAMERA_BITRATE", "1800k"),
             input_format=os.getenv("CAMERA_INPUT_FORMAT", "mjpeg"),
+            audio_device=os.getenv("CAMERA_AUDIO_DEVICE") or None,
+            audio_bitrate=os.getenv("CAMERA_AUDIO_BITRATE", "64k"),
             rtsp_url=os.getenv("MEDIA_MTX_RTSP_URL", "rtsp://localhost:8554/dog-cam"),
             api_url=os.getenv("API_URL", "http://localhost:4000"),
             heartbeat_interval=float(os.getenv("HEARTBEAT_INTERVAL_SECONDS", "5")),
@@ -40,15 +44,35 @@ class Config:
 
 
 def ffmpeg_command(config: Config) -> list[str]:
-    return [
+    command = [
         "ffmpeg", "-hide_banner", "-loglevel", "warning",
+        "-thread_queue_size", "512",
         "-f", "v4l2", "-input_format", config.input_format,
         "-video_size", f"{config.width}x{config.height}",
         "-framerate", str(config.fps), "-i", config.device,
-        "-an", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-        "-b:v", config.bitrate, "-pix_fmt", "yuv420p", "-g", str(config.fps * 2),
-        "-f", "rtsp", "-rtsp_transport", "tcp", config.rtsp_url,
     ]
+    if config.audio_device:
+        command.extend([
+            "-thread_queue_size", "512",
+            "-f", "alsa", "-i", config.audio_device,
+            "-map", "0:v:0", "-map", "1:a:0",
+        ])
+    else:
+        command.append("-an")
+
+    command.extend([
+        "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+        "-b:v", config.bitrate, "-pix_fmt", "yuv420p", "-g", str(config.fps * 2),
+    ])
+    if config.audio_device:
+        command.extend([
+            "-c:a", "libopus", "-b:a", config.audio_bitrate,
+            "-ar", "48000", "-ac", "1",
+        ])
+    command.extend([
+        "-f", "rtsp", "-rtsp_transport", "tcp", config.rtsp_url,
+    ])
+    return command
 
 
 def send_heartbeat(config: Config, state: str, message: str | None = None) -> None:

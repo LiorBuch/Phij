@@ -77,12 +77,40 @@ Make the GHCR packages public, or run `docker login ghcr.io` once on the Pi.
 To deploy another release without editing the script, run
 `APP_VERSION=0.2.0 bash deploy.sh`.
 
+## Secure Cloudflare Tunnel
+
+Remote HTTPS viewers use authenticated HLS through Cloudflare; LAN HTTP viewers
+keep low-latency WebRTC. The camera, API, and HLS ports are not published to the
+internet, and no router port forwarding is required.
+
+1. Under Zero Trust **Settings → Authentication**, configure Google as a login
+   method.
+2. Under **Access → Applications**, add a self-hosted application for the exact
+   future hostname, such as `dogcam.example.com`. Add one **Allow** policy
+   restricted to the specific Google email addresses that may view the camera.
+   Do not add a Bypass policy.
+3. Create a remotely-managed Cloudflare Tunnel and copy its token into the Pi's
+   private `.env`:
+   ```env
+   CLOUDFLARE_TUNNEL_TOKEN=your-long-tunnel-token
+   ```
+4. Add the protected public hostname to the tunnel. Set its service type to
+   HTTP and its internal URL to `http://web:3000`.
+5. Set a short Access session duration and create a Cloudflare cache rule that
+   bypasses caching for the dog-camera hostname.
+6. Publish a new application release and run `bash deploy.sh` on the Pi.
+
+Test the domain in a private browser window before relying on it: Cloudflare
+must show Google authentication before any page loads. Do not forward ports
+8889 or 8189 on the router; those published ports are only for LAN WebRTC.
+Treat `.env` as a secret and rotate the tunnel token immediately if it leaks.
+
 ## LAN setup
 
 Set `MEDIA_HOST` to the Pi's LAN IP before starting Compose. The browser derives
 API and WHEP hosts from the page URL, so one published image works on any LAN.
-Allow TCP 3000, 4000, 8554, 8889 and UDP 8189 through the Pi firewall. Open
-`http://PI_LAN_IP:3000` from a computer or phone on the same network.
+Allow TCP 3001 and 8889 plus UDP 8189 only on the trusted LAN. Open
+`http://PI_LAN_IP:3001` from a computer or phone on the same network.
 
 ## Quality checks
 

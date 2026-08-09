@@ -5,11 +5,8 @@ services:
     volumes:
       - ./infra/mediamtx/mediamtx.yml:/mediamtx.yml:ro
     ports:
-      - "8554:8554"
       - "8889:8889"
       - "8189:8189/udp"
-      - "9997:9997"
-      - "9998:9998"
     environment:
       MTX_WEBRTCADDITIONALHOSTS: ${MEDIA_HOST:-127.0.0.1}
 
@@ -24,9 +21,6 @@ services:
       WHEP_URL: ${NEXT_PUBLIC_WHEP_URL:-http://localhost:8889/dog-cam/whep}
       CAMERA_STALE_AFTER_SECONDS: 15
       CORS_ORIGIN: "*"
-    ports:
-      - "4000:4000"
-
   web:
     image: ${IMAGE_PREFIX:-ghcr.io/liorbuch/phij}-web:${APP_VERSION:-latest}
     build:
@@ -34,8 +28,23 @@ services:
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${WEB_PORT:-3001}:3000"
     depends_on: [server, mediamtx]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on: [web]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
 
   camera:
     image: ${IMAGE_PREFIX:-ghcr.io/liorbuch/phij}-camera:${APP_VERSION:-latest}
@@ -45,6 +54,7 @@ services:
     restart: unless-stopped
     devices:
       - ${CAMERA_DEVICE:-/dev/video0}:${CAMERA_DEVICE:-/dev/video0}
+      - /dev/snd:/dev/snd
     environment:
       CAMERA_ID: dog-cam
       CAMERA_DEVICE: ${CAMERA_DEVICE:-/dev/video0}
@@ -53,6 +63,8 @@ services:
       CAMERA_FPS: ${CAMERA_FPS:-25}
       CAMERA_BITRATE: ${CAMERA_BITRATE:-1800k}
       CAMERA_INPUT_FORMAT: ${CAMERA_INPUT_FORMAT:-mjpeg}
+      CAMERA_AUDIO_DEVICE: ${CAMERA_AUDIO_DEVICE-plughw:1,0}
+      CAMERA_AUDIO_BITRATE: ${CAMERA_AUDIO_BITRATE:-64k}
       MEDIA_MTX_RTSP_URL: rtsp://mediamtx:8554/dog-cam
       API_URL: http://server:4000
       HEARTBEAT_INTERVAL_SECONDS: 5

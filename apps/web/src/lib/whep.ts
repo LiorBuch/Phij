@@ -19,8 +19,11 @@ export async function connectWhep(
   onState: (state: RTCPeerConnectionState) => void,
 ): Promise<WhepSession> {
   const peer = new RTCPeerConnection();
+  const mediaStream = new MediaStream();
+  video.srcObject = mediaStream;
   peer.addTransceiver("video", { direction: "recvonly" });
-  peer.ontrack = (event) => { video.srcObject = event.streams[0]; };
+  peer.addTransceiver("audio", { direction: "recvonly" });
+  peer.ontrack = (event) => { mediaStream.addTrack(event.track); };
   peer.onconnectionstatechange = () => onState(peer.connectionState);
   await peer.setLocalDescription(await peer.createOffer());
   await waitForIceGathering(peer);
