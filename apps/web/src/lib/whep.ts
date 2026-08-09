@@ -23,7 +23,10 @@ export async function connectWhep(
   video.srcObject = mediaStream;
   peer.addTransceiver("video", { direction: "recvonly" });
   peer.addTransceiver("audio", { direction: "recvonly" });
-  peer.ontrack = (event) => { mediaStream.addTrack(event.track); };
+  peer.ontrack = (event) => {
+    mediaStream.addTrack(event.track);
+    void video.play().catch(() => undefined);
+  };
   peer.onconnectionstatechange = () => onState(peer.connectionState);
   await peer.setLocalDescription(await peer.createOffer());
   await waitForIceGathering(peer);
