@@ -1,8 +1,8 @@
 # Phij Dog Camera
 
-Low-latency, local-network dog video from a Raspberry Pi USB camera to a web
-viewer. MediaMTX handles RTSP ingest and WebRTC/WHEP playback; FastAPI tracks
-camera health; Next.js renders the viewer.
+Low-latency dog video relayed from a LAN RTSP camera through a Raspberry Pi to
+a web viewer. MediaMTX handles RTSP ingest and WebRTC/WHEP playback; FastAPI
+tracks camera health; Next.js renders the viewer.
 
 ## Projects
 
@@ -56,7 +56,8 @@ an `.env` file together. Configure:
 APP_VERSION=0.1.0
 IMAGE_PREFIX=ghcr.io/liorbuch/phij
 MEDIA_HOST=192.168.1.50
-CAMERA_DEVICE=/dev/video0
+CAMERA_RTSP_URL=rtsp://user:password@192.168.50.175:8554/ch2
+CAMERA_VIDEO_CODEC=copy
 ```
 
 Replace `MEDIA_HOST` with the Pi's LAN address. Publish the same version from
@@ -79,9 +80,10 @@ To deploy another release without editing the script, run
 
 ## Secure Cloudflare Tunnel
 
-Remote HTTPS viewers use authenticated HLS through Cloudflare; LAN HTTP viewers
-keep low-latency WebRTC. The camera, API, and HLS ports are not published to the
-internet, and no router port forwarding is required.
+Playback is WebRTC-only. A Cloudflare tunnel to the web service can protect the
+UI and API, but it does not by itself carry MediaMTX's WHEP and WebRTC media
+traffic. Remote playback additionally requires a secure, reachable WHEP
+endpoint and suitable ICE/TURN configuration. LAN playback needs neither.
 
 1. Under Zero Trust **Settings → Authentication**, configure Google as a login
    method.
@@ -96,14 +98,12 @@ internet, and no router port forwarding is required.
    ```
 4. Add the protected public hostname to the tunnel. Set its service type to
    HTTP and its internal URL to `http://web:3000`.
-5. Set a short Access session duration and create a Cloudflare cache rule that
-   bypasses caching for the dog-camera hostname.
+5. Set a short Access session duration.
 6. Publish a new application release and run `bash deploy.sh` on the Pi.
 
 Test the domain in a private browser window before relying on it: Cloudflare
-must show Google authentication before any page loads. Do not forward ports
-8889 or 8189 on the router; those published ports are only for LAN WebRTC.
-Treat `.env` as a secret and rotate the tunnel token immediately if it leaks.
+must show Google authentication before any page loads. Treat `.env` as a
+secret and rotate the tunnel token immediately if it leaks.
 
 ## LAN setup
 

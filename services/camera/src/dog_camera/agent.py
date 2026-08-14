@@ -13,13 +13,11 @@ from typing import Callable
 @dataclass(frozen=True)
 class Config:
     camera_id: str = "dog-cam"
-    device: str = "/dev/video0"
-    width: int = 1280
-    height: int = 720
-    fps: int = 25
+    source_rtsp_url: str = ""
+    source_rtsp_transport: str = "tcp"
+    video_codec: str = "copy"
     bitrate: str = "1800k"
-    input_format: str = "mjpeg"
-    audio_device: str | None = None
+    audio_codec: str = "libopus"
     audio_bitrate: str = "64k"
     rtsp_url: str = "rtsp://localhost:8554/dog-cam"
     api_url: str = "http://localhost:4000"
@@ -27,48 +25,58 @@ class Config:
 
     @classmethod
     def from_env(cls) -> Config:
-        return cls(
+        config = cls(
             camera_id=os.getenv("CAMERA_ID", "dog-cam"),
-            device=os.getenv("CAMERA_DEVICE", "/dev/video0"),
-            width=int(os.getenv("CAMERA_WIDTH", "1280")),
-            height=int(os.getenv("CAMERA_HEIGHT", "720")),
-            fps=int(os.getenv("CAMERA_FPS", "25")),
+            source_rtsp_url=os.getenv("CAMERA_RTSP_URL", ""),
+            source_rtsp_transport=os.getenv("CAMERA_RTSP_TRANSPORT", "tcp"),
+            video_codec=os.getenv("CAMERA_VIDEO_CODEC", "copy"),
             bitrate=os.getenv("CAMERA_BITRATE", "1800k"),
-            input_format=os.getenv("CAMERA_INPUT_FORMAT", "mjpeg"),
-            audio_device=os.getenv("CAMERA_AUDIO_DEVICE") or None,
+            audio_codec=os.getenv("CAMERA_AUDIO_CODEC", "libopus"),
             audio_bitrate=os.getenv("CAMERA_AUDIO_BITRATE", "64k"),
             rtsp_url=os.getenv("MEDIA_MTX_RTSP_URL", "rtsp://localhost:8554/dog-cam"),
             api_url=os.getenv("API_URL", "http://localhost:4000"),
             heartbeat_interval=float(os.getenv("HEARTBEAT_INTERVAL_SECONDS", "5")),
         )
+        if not config.source_rtsp_url:
+            raise ValueError("CAMERA_RTSP_URL must be set")
+        if config.source_rtsp_transport not in {"tcp", "udp"}:
+            raise ValueError("CAMERA_RTSP_TRANSPORT must be tcp or udp")
+        return config
 
 
 def ffmpeg_command(config: Config) -> list[str]:
+    if not config.source_rtsp_url:
+        raise ValueError("source_rtsp_url must be set")
+
     command = [
         "ffmpeg", "-hide_banner", "-loglevel", "warning",
-        "-thread_queue_size", "512",
-        "-f", "v4l2", "-input_format", config.input_format,
-        "-video_size", f"{config.width}x{config.height}",
-        "-framerate", str(config.fps), "-i", config.device,
+        "-rtsp_transport", config.source_rtsp_transport,
+        "-rw_timeout", "10000000",
+        "-fflags", "nobuffer",
+        "-flags", "low_delay",
+        "-i", config.source_rtsp_url,
+        "-map", "0:v:0",
+        "-map", "0:a:0?",
     ]
-    if config.audio_device:
-        command.extend([
-            "-thread_queue_size", "512",
-            "-f", "alsa", "-i", config.audio_device,
-            "-map", "0:v:0", "-map", "1:a:0",
-        ])
+    if config.video_codec == "copy":
+        command.extend(["-c:v", "copy"])
     else:
-        command.append("-an")
-
-    command.extend([
-        "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-        "-b:v", config.bitrate, "-pix_fmt", "yuv420p", "-g", str(config.fps * 2),
-    ])
-    if config.audio_device:
         command.extend([
-            "-c:a", "libopus", "-b:a", config.audio_bitrate,
+            "-c:v", config.video_codec,
+            "-preset", "ultrafast",
+            "-tune", "zerolatency",
+            "-b:v", config.bitrate,
+            "-pix_fmt", "yuv420p",
+        ])
+
+    if config.audio_codec == "none":
+        command.append("-an")
+    else:
+        command.extend([
+            "-c:a", config.audio_codec, "-b:a", config.audio_bitrate,
             "-ar", "48000", "-ac", "1",
         ])
+
     command.extend([
         "-f", "rtsp", "-rtsp_transport", "tcp", config.rtsp_url,
     ])

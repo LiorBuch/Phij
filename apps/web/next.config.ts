@@ -9,10 +9,6 @@ const config: NextConfig = {
         source: "/api/:path*",
         destination: `${process.env.INTERNAL_API_URL ?? "http://localhost:4000"}/api/:path*`,
       },
-      {
-        source: "/dog-cam/:path*",
-        destination: `${process.env.INTERNAL_HLS_URL ?? "http://localhost:8888"}/dog-cam/:path*`,
-      },
     ];
   },
   async headers() {

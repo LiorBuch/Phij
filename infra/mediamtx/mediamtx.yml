@@ -6,10 +6,7 @@ metricsAddress: :9998
 rtspAddress: :8554
 webrtcAddress: :8889
 webrtcAllowOrigins: ["*"]
-hls: yes
-hlsAddress: :8888
-hlsAllowOrigins: ["*"]
-hlsVariant: lowLatency
+hls: no
 
 paths:
   dog-cam:

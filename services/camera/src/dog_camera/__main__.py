@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config = Config.from_env()
-    logger.info("starting camera %s from %s", config.camera_id, config.device)
+    logger.info("starting RTSP relay for camera %s", config.camera_id)
     try:
         run(config)
     except KeyboardInterrupt:

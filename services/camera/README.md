@@ -1,24 +1,23 @@
 # Raspberry Pi camera agent
 
-Target: Raspberry Pi OS Bookworm and a USB V4L2 camera. The normal deployment
-runs this agent as the `camera` service in the root Compose stack.
+Target: Raspberry Pi OS Bookworm and a LAN RTSP camera. The normal deployment
+runs this agent as the `camera` service in the root Compose stack. FFmpeg reads
+the camera stream and republishes it to MediaMTX for WebRTC playback.
 
-1. Confirm the device:
+1. Inspect the camera stream:
    ```sh
-   sudo apt update
-   sudo apt install -y v4l-utils alsa-utils
-   v4l2-ctl --list-devices
-   v4l2-ctl --device /dev/video0 --list-formats-ext
-   arecord -l
+   ffprobe -v error -rtsp_transport tcp \
+     -show_entries stream=codec_type,codec_name \
+     -of compact "rtsp://user:password@camera-ip:8554/ch2"
    ```
-2. Set `CAMERA_DEVICE` and supported capture settings in the root `.env`, then
-   set `CAMERA_AUDIO_DEVICE` to the webcam microphone reported by `arecord`
-   (for example `plughw:1,0`). Run `bash deploy.sh`. Compose maps `/dev/video0`
-   and `/dev/snd` into the versioned camera container.
+2. Set `CAMERA_RTSP_URL` in the root `.env`, then run `bash deploy.sh`. Keep
+   credentials in `.env`; never commit them.
 
-Audio is encoded as mono Opus for WebRTC compatibility. The web viewer starts
-muted to satisfy browser autoplay rules; select **Enable sound** after the
-stream connects. Set `CAMERA_AUDIO_DEVICE=` to disable microphone capture.
+For the lowest latency, configure the camera to emit H.264 and leave
+`CAMERA_VIDEO_CODEC=copy`. If the stream is H.265, select an H.264 camera
+profile or set `CAMERA_VIDEO_CODEC=libx264` to transcode it. Source audio is
+encoded as mono Opus for WebRTC compatibility; set `CAMERA_AUDIO_CODEC=none`
+to disable it.
 
 For a non-container systemd installation, copy this directory to
 `/opt/phij-camera`, then install it:
@@ -28,8 +27,7 @@ For a non-container systemd installation, copy this directory to
    .venv/bin/pip install .
    ```
 Copy the root `.env.example` to `/etc/phij-camera.env`. Set
-   `MEDIA_MTX_RTSP_URL` and `API_URL` to the server computer's LAN IP. Match
-   `CAMERA_INPUT_FORMAT`, resolution, and FPS to values reported by `v4l2-ctl`.
+   `CAMERA_RTSP_URL`, `MEDIA_MTX_RTSP_URL`, and `API_URL` for your network.
 Install `deploy/dog-camera.service` in `/etc/systemd/system/`, adjust `User`
    if needed, and run:
    ```sh
@@ -38,6 +36,6 @@ Install `deploy/dog-camera.service` in `/etc/systemd/system/`, adjust `User`
    journalctl -u dog-camera -f
    ```
 
-Allow outbound TCP from the Pi to ports 8554 and 4000 on the server. The agent
-restarts FFmpeg with bounded backoff and continues streaming after transient
-camera or network failures.
+Allow the Pi to reach the camera's RTSP port and the server's ports 8554 and
+4000. The agent restarts FFmpeg with bounded backoff after camera or network
+failures.

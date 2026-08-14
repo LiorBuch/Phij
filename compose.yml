@@ -15,6 +15,15 @@ services:
     build:
       context: .
       dockerfile: apps/server/Dockerfile
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "4000"
+      - --timeout-keep-alive
+      - "30"
     restart: unless-stopped
     environment:
       STREAM_NAME: dog-cam
@@ -52,18 +61,13 @@ services:
       context: .
       dockerfile: services/camera/Dockerfile
     restart: unless-stopped
-    devices:
-      - ${CAMERA_DEVICE:-/dev/video0}:${CAMERA_DEVICE:-/dev/video0}
-      - /dev/snd:/dev/snd
     environment:
       CAMERA_ID: dog-cam
-      CAMERA_DEVICE: ${CAMERA_DEVICE:-/dev/video0}
-      CAMERA_WIDTH: ${CAMERA_WIDTH:-1280}
-      CAMERA_HEIGHT: ${CAMERA_HEIGHT:-720}
-      CAMERA_FPS: ${CAMERA_FPS:-25}
+      CAMERA_RTSP_URL: ${CAMERA_RTSP_URL:-}
+      CAMERA_RTSP_TRANSPORT: ${CAMERA_RTSP_TRANSPORT:-tcp}
+      CAMERA_VIDEO_CODEC: ${CAMERA_VIDEO_CODEC:-copy}
       CAMERA_BITRATE: ${CAMERA_BITRATE:-1800k}
-      CAMERA_INPUT_FORMAT: ${CAMERA_INPUT_FORMAT:-mjpeg}
-      CAMERA_AUDIO_DEVICE: ${CAMERA_AUDIO_DEVICE-plughw:1,0}
+      CAMERA_AUDIO_CODEC: ${CAMERA_AUDIO_CODEC:-libopus}
       CAMERA_AUDIO_BITRATE: ${CAMERA_AUDIO_BITRATE:-64k}
       MEDIA_MTX_RTSP_URL: rtsp://mediamtx:8554/dog-cam
       API_URL: http://server:4000
