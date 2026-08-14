@@ -2,6 +2,7 @@
 
 import { cameraStatusSchema, streamInfoSchema, type CameraStatus } from "@phij/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { connectHls } from "@/lib/hls";
 import { connectWhep, type WhepSession } from "@/lib/whep";
 
 function localServiceUrl(configured: string | undefined, port: number, path = "") {
@@ -39,20 +40,30 @@ export default function Home() {
     const connect = async () => {
       setPlayer("Connecting");
       try {
-        const fallbackWhep = localServiceUrl(
-          process.env.NEXT_PUBLIC_WHEP_URL,
-          8889,
-          "/dog-cam/whep",
-        );
-        const response = await fetch("/api/stream", {cache: "no-store"});
-        const stream = response.ok ? streamInfoSchema.parse(await response.json()) : null;
-        const configuredUrl = stream?.whepUrl;
-        const whepUrl = configuredUrl?.includes("localhost")
-          ? fallbackWhep
-          : configuredUrl ?? fallbackWhep;
-        const session = await connectWhep(whepUrl, videoRef.current!, (state) => {
-          if (!cancelled) setPlayer(state === "connected" ? "Live (WebRTC)" : state);
-        });
+        const secureRemote = window.location.protocol === "https:";
+        let session: WhepSession;
+        if (secureRemote) {
+          session = await connectHls(
+            `${window.location.origin}/dog-cam/index.m3u8`,
+            videoRef.current!,
+            (state) => { if (!cancelled) setPlayer(state); },
+          );
+        } else {
+          const fallbackWhep = localServiceUrl(
+            process.env.NEXT_PUBLIC_WHEP_URL,
+            8889,
+            "/dog-cam/whep",
+          );
+          const response = await fetch("/api/stream", {cache: "no-store"});
+          const stream = response.ok ? streamInfoSchema.parse(await response.json()) : null;
+          const configuredUrl = stream?.whepUrl;
+          const whepUrl = configuredUrl?.includes("localhost")
+            ? fallbackWhep
+            : configuredUrl ?? fallbackWhep;
+          session = await connectWhep(whepUrl, videoRef.current!, (state) => {
+            if (!cancelled) setPlayer(state === "connected" ? "Live (LAN WebRTC)" : state);
+          });
+        }
         if (cancelled) await session.close(); else sessionRef.current = session;
       } catch (error) {
         if (!cancelled) setPlayer(error instanceof Error ? error.message : "Connection failed");

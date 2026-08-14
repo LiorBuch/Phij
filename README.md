@@ -80,10 +80,10 @@ To deploy another release without editing the script, run
 
 ## Secure Cloudflare Tunnel
 
-Playback is WebRTC-only. A Cloudflare tunnel to the web service can protect the
-UI and API, but it does not by itself carry MediaMTX's WHEP and WebRTC media
-traffic. Remote playback additionally requires a secure, reachable WHEP
-endpoint and suitable ICE/TURN configuration. LAN playback needs neither.
+Remote HTTPS viewers use authenticated low-latency HLS through Cloudflare.
+LAN HTTP viewers continue to use lower-latency WebRTC. Camera analysis services
+should consume RTSP directly, so HLS buffering does not delay detections or
+notifications.
 
 1. Under Zero Trust **Settings → Authentication**, configure Google as a login
    method.
