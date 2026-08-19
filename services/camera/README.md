@@ -37,5 +37,7 @@ Install `deploy/dog-camera.service` in `/etc/systemd/system/`, adjust `User`
    ```
 
 Allow the Pi to reach the camera's RTSP port and the server's ports 8554 and
-4000. The agent restarts FFmpeg with bounded backoff after camera or network
-failures.
+4000, and allow it to query the MediaMTX API on port 9997. The agent restarts
+FFmpeg with bounded backoff after camera or network failures. It also restarts
+a stuck FFmpeg process when the MediaMTX path remains unavailable after the
+configured startup grace period.

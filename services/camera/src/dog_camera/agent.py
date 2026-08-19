@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import time
@@ -8,6 +9,9 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
+from urllib.parse import quote
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -20,8 +24,12 @@ class Config:
     audio_codec: str = "libopus"
     audio_bitrate: str = "64k"
     rtsp_url: str = "rtsp://localhost:8554/dog-cam"
+    media_mtx_api_url: str = "http://localhost:9997"
     api_url: str = "http://localhost:4000"
     heartbeat_interval: float = 5
+    rtsp_io_timeout: float = 15
+    publisher_startup_grace: float = 15
+    publisher_unready_checks: int = 2
 
     @classmethod
     def from_env(cls) -> Config:
@@ -34,8 +42,12 @@ class Config:
             audio_codec=os.getenv("CAMERA_AUDIO_CODEC", "libopus"),
             audio_bitrate=os.getenv("CAMERA_AUDIO_BITRATE", "64k"),
             rtsp_url=os.getenv("MEDIA_MTX_RTSP_URL", "rtsp://localhost:8554/dog-cam"),
+            media_mtx_api_url=os.getenv("MEDIA_MTX_API_URL", "http://localhost:9997"),
             api_url=os.getenv("API_URL", "http://localhost:4000"),
             heartbeat_interval=float(os.getenv("HEARTBEAT_INTERVAL_SECONDS", "5")),
+            rtsp_io_timeout=float(os.getenv("CAMERA_RTSP_IO_TIMEOUT_SECONDS", "15")),
+            publisher_startup_grace=float(os.getenv("PUBLISHER_STARTUP_GRACE_SECONDS", "15")),
+            publisher_unready_checks=int(os.getenv("PUBLISHER_UNREADY_CHECKS", "2")),
         )
         if not config.source_rtsp_url:
             raise ValueError("CAMERA_RTSP_URL must be set")
@@ -51,6 +63,7 @@ def ffmpeg_command(config: Config) -> list[str]:
     command = [
         "ffmpeg", "-hide_banner", "-loglevel", "warning",
         "-rtsp_transport", config.source_rtsp_transport,
+        "-rw_timeout", str(int(config.rtsp_io_timeout * 1_000_000)),
         "-fflags", "nobuffer",
         "-flags", "low_delay",
         "-i", config.source_rtsp_url,
@@ -99,6 +112,23 @@ def send_heartbeat(config: Config, state: str, message: str | None = None) -> No
         pass
 
 
+def media_path_ready(config: Config) -> bool:
+    path = quote(config.camera_id, safe="")
+    url = f"{config.media_mtx_api_url.rstrip('/')}/v3/paths/get/{path}"
+    with urllib.request.urlopen(url, timeout=3) as response:
+        payload = json.load(response)
+    return bool(payload.get("ready"))
+
+
+def stop_process(process: subprocess.Popen[bytes]) -> None:
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
 def run(
     config: Config,
     popen: Callable[..., subprocess.Popen[bytes]] = subprocess.Popen,
@@ -108,16 +138,41 @@ def run(
     while True:
         process = popen(ffmpeg_command(config))
         started = time.monotonic()
+        unready_checks = 0
+        restart_reason: str | None = None
         while process.poll() is None:
-            state = "streaming" if time.monotonic() - started >= 2 else "starting"
+            elapsed = time.monotonic() - started
+            ready: bool | None = None
+            if elapsed >= config.publisher_startup_grace:
+                try:
+                    ready = media_path_ready(config)
+                except (OSError, ValueError) as error:
+                    unready_checks = 0
+                    logger.warning("unable to check MediaMTX path readiness: %s", error)
+                else:
+                    unready_checks = 0 if ready else unready_checks + 1
+                    if unready_checks >= config.publisher_unready_checks:
+                        restart_reason = (
+                            f"MediaMTX path {config.camera_id} remained unavailable; "
+                            "restarting FFmpeg"
+                        )
+                        logger.warning(restart_reason)
+                        stop_process(process)
+                        break
+
+            state = "streaming" if elapsed >= 2 and ready is not False else "starting"
             try:
                 send_heartbeat(config, state)
             except OSError:
                 pass
             sleep(config.heartbeat_interval)
+        runtime = time.monotonic() - started
+        message = restart_reason or f"FFmpeg exited with code {process.returncode}"
         try:
-            send_heartbeat(config, "error", f"FFmpeg exited with code {process.returncode}")
+            send_heartbeat(config, "error", message)
         except OSError:
             pass
+        if runtime >= 60:
+            backoff = 1.0
         sleep(backoff)
         backoff = min(backoff * 2, 30)

@@ -5,7 +5,7 @@ requires-python = ">=3.9"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["mypy>=1.17", "pytest>=8.4", "ruff>=0.12"]
+dev = ["mypy>=1.17,<2", "pytest>=8.4", "ruff>=0.12"]
 
 [project.scripts]
 dog-camera = "dog_camera.__main__:main"
