@@ -30,6 +30,8 @@ class Config:
     rtsp_io_timeout: float = 15
     publisher_startup_grace: float = 15
     publisher_unready_checks: int = 2
+    publisher_health_retries: int = 5
+    publisher_health_retry_delay: float = 1.0
 
     @classmethod
     def from_env(cls) -> Config:
@@ -48,6 +50,8 @@ class Config:
             rtsp_io_timeout=float(os.getenv("CAMERA_RTSP_IO_TIMEOUT_SECONDS", "15")),
             publisher_startup_grace=float(os.getenv("PUBLISHER_STARTUP_GRACE_SECONDS", "15")),
             publisher_unready_checks=int(os.getenv("PUBLISHER_UNREADY_CHECKS", "2")),
+            publisher_health_retries=int(os.getenv("PUBLISHER_HEALTH_RETRIES", "3")),
+            publisher_health_retry_delay=float(os.getenv("PUBLISHER_HEALTH_RETRY_DELAY_SECONDS", "1")),
         )
         if not config.source_rtsp_url:
             raise ValueError("CAMERA_RTSP_URL must be set")
@@ -120,6 +124,30 @@ def media_path_ready(config: Config) -> bool:
     return bool(payload.get("ready"))
 
 
+def check_publisher_health(
+    config: Config,
+    sleep: Callable[[float], None] = time.sleep,
+) -> bool | None:
+    """Return True when the path is ready, False when not, None when the API is unreachable."""
+    path = quote(config.camera_id, safe="")
+    url = f"{config.media_mtx_api_url.rstrip('/')}/v3/paths/get/{path}"
+    last_error: OSError | ValueError | None = None
+    for attempt in range(config.publisher_health_retries):
+        try:
+            return media_path_ready(config)
+        except (OSError, ValueError) as error:
+            last_error = error
+            if attempt + 1 < config.publisher_health_retries:
+                sleep(config.publisher_health_retry_delay)
+    logger.warning(
+        "unable to check MediaMTX path readiness at %s after %d attempts: %s",
+        url,
+        config.publisher_health_retries,
+        last_error,
+    )
+    return None
+
+
 def stop_process(process: subprocess.Popen[bytes]) -> None:
     process.terminate()
     try:
@@ -144,23 +172,27 @@ def run(
             elapsed = time.monotonic() - started
             ready: bool | None = None
             if elapsed >= config.publisher_startup_grace:
-                try:
-                    ready = media_path_ready(config)
-                except (OSError, ValueError) as error:
+                ready = check_publisher_health(config, sleep=sleep)
+                if ready is True:
                     unready_checks = 0
-                    logger.warning("unable to check MediaMTX path readiness: %s", error)
                 else:
-                    unready_checks = 0 if ready else unready_checks + 1
+                    unready_checks += 1
                     if unready_checks >= config.publisher_unready_checks:
-                        restart_reason = (
-                            f"MediaMTX path {config.camera_id} remained unavailable; "
-                            "restarting FFmpeg"
-                        )
+                        if ready is False:
+                            restart_reason = (
+                                f"MediaMTX path {config.camera_id} remained unavailable; "
+                                "restarting FFmpeg"
+                            )
+                        else:
+                            restart_reason = (
+                                f"MediaMTX health checks failed for {config.camera_id}; "
+                                "restarting FFmpeg"
+                            )
                         logger.warning(restart_reason)
                         stop_process(process)
                         break
 
-            state = "streaming" if elapsed >= 2 and ready is not False else "starting"
+            state = "streaming" if elapsed >= 2 and ready is True else "starting"
             try:
                 send_heartbeat(config, state)
             except OSError:

@@ -2,18 +2,30 @@ name: Build and Publish Docker Images
 
 on:
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Release tag to publish for all Docker images
-        required: true
-        type: string
 
 permissions:
   contents: write
   packages: write
 
 jobs:
+  resolve-release-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.version.outputs.release_tag }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Read version from package.json
+        id: version
+        shell: bash
+        run: |
+          RELEASE_TAG=$(node -p "require('./package.json').version")
+          echo "Using release tag: $RELEASE_TAG"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
   build-and-push:
+    needs: resolve-release-tag
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -46,7 +58,7 @@ jobs:
         id: image-tags
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+          RELEASE_TAG: ${{ needs.resolve-release-tag.outputs.release_tag }}
           REPOSITORY: ${{ github.repository }}
           SERVICE: ${{ matrix.service }}
         run: |
@@ -73,8 +85,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
   create-release-tag:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    needs: build-and-push
+    needs:
+      - resolve-release-tag
+      - build-and-push
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -85,7 +98,7 @@ jobs:
       - name: Create repository tag
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+          RELEASE_TAG: ${{ needs.resolve-release-tag.outputs.release_tag }}
         run: |
           git check-ref-format "refs/tags/$RELEASE_TAG"
           if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG"; then
