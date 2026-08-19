@@ -63,7 +63,7 @@ def ffmpeg_command(config: Config) -> list[str]:
     command = [
         "ffmpeg", "-hide_banner", "-loglevel", "warning",
         "-rtsp_transport", config.source_rtsp_transport,
-        "-rw_timeout", str(int(config.rtsp_io_timeout * 1_000_000)),
+        "-timeout", str(int(config.rtsp_io_timeout * 1_000_000)),
         "-fflags", "nobuffer",
         "-flags", "low_delay",
         "-i", config.source_rtsp_url,

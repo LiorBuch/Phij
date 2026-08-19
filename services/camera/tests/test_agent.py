@@ -29,7 +29,7 @@ def test_ffmpeg_command_copies_rtsp_video_and_publishes() -> None:
     assert command[command.index("-c:v") + 1] == "copy"
     assert command[-1] == config.rtsp_url
     assert command[command.index("-c:a") + 1] == "libopus"
-    assert command[command.index("-rw_timeout") + 1] == "15000000"
+    assert command[command.index("-timeout") + 1] == "15000000"
 
 
 def test_ffmpeg_command_can_transcode_video_and_disable_audio() -> None:

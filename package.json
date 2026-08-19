@@ -1,6 +1,6 @@
 {
   "name": "phij-dog-camera",
-  "version": "0.4.2",
+  "version": "0.4.4",
   "private": true,
   "packageManager": "pnpm@11.20.0",
   "scripts": {
